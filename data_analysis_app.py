@@ -526,63 +526,265 @@ else:
                     st.markdown('</div>', unsafe_allow_html=True)
 
         with tab2:
-            if not summary['numeric_cols']:
-                st.info("No numeric columns found for visualization.")
-            else:
-                sns.set_theme(style="dark", palette="muted")
-                plt.rcParams.update({"figure.facecolor": "#12121a", "axes.facecolor": "#0a0a0f",
-                                     "text.color": "#e2e8f0", "axes.labelcolor": "#e2e8f0",
-                                     "xtick.color": "#64748b", "ytick.color": "#64748b",
-                                     "axes.edgecolor": "#1e1e2e", "grid.color": "#1e1e2e"})
+            # ── Chart theme ──
+            DARK_BG   = "#0a0a0f"
+            CARD_BG   = "#12121a"
+            BORDER    = "#1e1e2e"
+            TEXT      = "#e2e8f0"
+            MUTED     = "#64748b"
+            PALETTE   = ["#7c3aed","#06b6d4","#10b981","#f59e0b","#ef4444","#8b5cf6","#ec4899","#14b8a6"]
 
-                # Distribution plots
-                st.markdown('<div class="analysis-card"><h4>📊 Distributions</h4>', unsafe_allow_html=True)
-                cols_to_plot = summary['numeric_cols'][:6]
-                n = len(cols_to_plot)
-                ncols = min(3, n)
-                nrows = (n + ncols - 1) // ncols
-                fig, axes = plt.subplots(nrows, ncols, figsize=(5*ncols, 4*nrows), facecolor="#12121a")
-                axes = np.array(axes).flatten() if n > 1 else [axes]
-                colors = ["#7c3aed", "#06b6d4", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6"]
-                for i, col in enumerate(cols_to_plot):
-                    axes[i].hist(df[col].dropna(), bins=30, color=colors[i % len(colors)], alpha=0.8, edgecolor="none")
-                    axes[i].set_title(col, fontsize=11, color="#e2e8f0", pad=8)
-                    axes[i].set_facecolor("#0a0a0f")
-                for j in range(i+1, len(axes)):
-                    axes[j].set_visible(False)
-                plt.tight_layout()
-                st.pyplot(fig)
-                plt.close()
+            plt.rcParams.update({
+                "figure.facecolor": CARD_BG, "axes.facecolor": DARK_BG,
+                "text.color": TEXT, "axes.labelcolor": MUTED,
+                "xtick.color": MUTED, "ytick.color": MUTED,
+                "axes.edgecolor": BORDER, "grid.color": BORDER,
+                "axes.grid": True, "grid.alpha": 0.3,
+            })
+
+            cols_lower = {c: c.lower().replace(" ","_").replace("-","_") for c in df.columns}
+            rev_map    = {v: k for k, v in cols_lower.items()}
+
+            def find_col(*keywords):
+                """Return first df column whose lowered name contains any keyword."""
+                for kw in keywords:
+                    for orig, low in cols_lower.items():
+                        if kw in low:
+                            return orig
+                return None
+
+            # Detect key columns
+            col_revenue  = find_col("total_price","revenue","sales","amount","total","price")
+            col_units    = find_col("quantity","units","qty","count","sold")
+            col_rating   = find_col("rating","score","review","stars")
+            col_returns  = find_col("return","refund","cancel")
+            col_category = find_col("category","dept","department","type","segment","product_line","productline")
+            col_gender   = find_col("gender","sex","customer_gender")
+            col_product  = find_col("product","item","name","product_name","sku","description")
+            col_discount = find_col("discount","promo","offer","reduction")
+            col_stock    = find_col("stock","inventory","qty_stock","available","in_stock","quantity_in_stock")
+
+            # ── ROW 0 : KPI Cards ─────────────────────────────────────────────
+            st.markdown("#### 📌 Key Metrics")
+            k1, k2, k3, k4 = st.columns(4)
+
+            def kpi_card(col_widget, icon, label, value, delta=None):
+                col_widget.markdown(f"""
+                <div class="stat-card" style="padding:1.4rem 1rem;">
+                    <div style="font-size:1.6rem;margin-bottom:.4rem">{icon}</div>
+                    <span class="stat-number" style="font-size:1.5rem">{value}</span>
+                    <span class="stat-label">{label}</span>
+                    {"<span style='font-size:.75rem;color:#10b981'>"+delta+"</span>" if delta else ""}
+                </div>""", unsafe_allow_html=True)
+
+            # Total Revenue
+            if col_revenue:
+                total_rev = df[col_revenue].sum()
+                kpi_card(k1, "💰", "Total Revenue",
+                         f"${total_rev:,.0f}" if total_rev > 1000 else f"{total_rev:,.2f}")
+            else:
+                kpi_card(k1, "💰", "Total Revenue", "N/A")
+
+            # Units Sold
+            if col_units:
+                total_units = df[col_units].sum()
+                kpi_card(k2, "📦", "Units Sold", f"{int(total_units):,}")
+            else:
+                kpi_card(k2, "📦", "Units Sold", f"{len(df):,} rows")
+
+            # Avg Rating
+            if col_rating:
+                avg_rating = df[col_rating].mean()
+                kpi_card(k3, "⭐", "Avg Rating", f"{avg_rating:.2f}")
+            else:
+                kpi_card(k3, "⭐", "Avg Rating", "N/A")
+
+            # Returns
+            if col_returns:
+                total_ret = df[col_returns].sum() if df[col_returns].dtype != object else df[col_returns].str.lower().isin(["yes","true","1","returned"]).sum()
+                kpi_card(k4, "↩️", "Returns", f"{int(total_ret):,}")
+            else:
+                kpi_card(k4, "↩️", "Returns", "N/A")
+
+            st.markdown('<hr class="styled-divider">', unsafe_allow_html=True)
+
+            # ── ROW 1 : Sales by Category | Sales by Gender ───────────────────
+            r1c1, r1c2 = st.columns(2)
+
+            with r1c1:
+                st.markdown('<div class="analysis-card"><h4>🏷️ Sales by Category</h4>', unsafe_allow_html=True)
+                if col_category and col_revenue:
+                    cat_rev = df.groupby(col_category)[col_revenue].sum().sort_values(ascending=False).head(8)
+                    fig, ax = plt.subplots(figsize=(6, 4), facecolor=CARD_BG)
+                    bars = ax.barh(cat_rev.index[::-1], cat_rev.values[::-1], color=PALETTE[:len(cat_rev)], edgecolor="none", height=0.6)
+                    ax.set_facecolor(DARK_BG)
+                    ax.set_xlabel("Revenue", color=MUTED, fontsize=9)
+                    for bar, val in zip(bars, cat_rev.values[::-1]):
+                        ax.text(bar.get_width()*1.01, bar.get_y()+bar.get_height()/2,
+                                f"${val:,.0f}", va="center", color=TEXT, fontsize=8)
+                    plt.tight_layout()
+                    st.pyplot(fig); plt.close()
+                elif col_category:
+                    cat_cnt = df[col_category].value_counts().head(8)
+                    fig, ax = plt.subplots(figsize=(6, 4), facecolor=CARD_BG)
+                    ax.barh(cat_cnt.index[::-1], cat_cnt.values[::-1], color=PALETTE[:len(cat_cnt)], edgecolor="none")
+                    ax.set_facecolor(DARK_BG)
+                    plt.tight_layout(); st.pyplot(fig); plt.close()
+                else:
+                    st.info("No category column detected.")
                 st.markdown('</div>', unsafe_allow_html=True)
 
-                # Correlation heatmap
-                if len(summary['numeric_cols']) >= 2:
-                    st.markdown('<div class="analysis-card"><h4>🔥 Correlation Matrix</h4>', unsafe_allow_html=True)
-                    corr = df[summary['numeric_cols']].corr()
-                    fig2, ax2 = plt.subplots(figsize=(max(6, len(summary['numeric_cols'])), max(5, len(summary['numeric_cols'])-1)),
-                                              facecolor="#12121a")
-                    sns.heatmap(corr, annot=True, fmt=".2f", cmap="RdPu", ax=ax2,
-                                linewidths=0.5, linecolor="#0a0a0f",
-                                annot_kws={"size": 9}, cbar_kws={"shrink": 0.8})
-                    ax2.set_facecolor("#12121a")
-                    plt.tight_layout()
-                    st.pyplot(fig2)
-                    plt.close()
-                    st.markdown('</div>', unsafe_allow_html=True)
+            with r1c2:
+                st.markdown('<div class="analysis-card"><h4>👥 Sales by Gender</h4>', unsafe_allow_html=True)
+                if col_gender and col_revenue:
+                    gen_rev = df.groupby(col_gender)[col_revenue].sum()
+                    fig, ax = plt.subplots(figsize=(5, 4), facecolor=CARD_BG)
+                    wedges, texts, autotexts = ax.pie(
+                        gen_rev.values, labels=gen_rev.index,
+                        colors=["#7c3aed","#06b6d4","#10b981"],
+                        autopct="%1.1f%%", startangle=140,
+                        wedgeprops=dict(edgecolor=CARD_BG, linewidth=2))
+                    for t in texts: t.set_color(TEXT)
+                    for at in autotexts: at.set_color(DARK_BG); at.set_fontsize(9)
+                    ax.set_facecolor(CARD_BG)
+                    plt.tight_layout(); st.pyplot(fig); plt.close()
+                elif col_gender:
+                    gen_cnt = df[col_gender].value_counts()
+                    fig, ax = plt.subplots(figsize=(5, 4), facecolor=CARD_BG)
+                    wedges, texts, autotexts = ax.pie(
+                        gen_cnt.values, labels=gen_cnt.index,
+                        colors=["#7c3aed","#06b6d4","#10b981"],
+                        autopct="%1.1f%%", startangle=140,
+                        wedgeprops=dict(edgecolor=CARD_BG, linewidth=2))
+                    for t in texts: t.set_color(TEXT)
+                    for at in autotexts: at.set_color(DARK_BG); at.set_fontsize(9)
+                    ax.set_facecolor(CARD_BG)
+                    plt.tight_layout(); st.pyplot(fig); plt.close()
+                else:
+                    st.info("No gender column detected.")
+                st.markdown('</div>', unsafe_allow_html=True)
 
-                # Missing Values
-                if summary['missing'] > 0:
-                    st.markdown('<div class="analysis-card"><h4>❓ Missing Values by Column</h4>', unsafe_allow_html=True)
-                    missing_s = df.isnull().sum()
-                    missing_s = missing_s[missing_s > 0].sort_values(ascending=True)
-                    fig3, ax3 = plt.subplots(figsize=(8, max(3, len(missing_s)*0.4)), facecolor="#12121a")
-                    ax3.barh(missing_s.index, missing_s.values, color="#ef4444", alpha=0.8)
-                    ax3.set_facecolor("#0a0a0f")
-                    ax3.set_xlabel("Missing Count", color="#64748b")
-                    plt.tight_layout()
-                    st.pyplot(fig3)
-                    plt.close()
-                    st.markdown('</div>', unsafe_allow_html=True)
+            # ── ROW 2 : Top 10 Products | Discount Analysis ───────────────────
+            r2c1, r2c2 = st.columns(2)
+
+            with r2c1:
+                st.markdown('<div class="analysis-card"><h4>🏆 Top 10 Products</h4>', unsafe_allow_html=True)
+                prod_col = col_product or col_category
+                if prod_col and col_revenue:
+                    top10 = df.groupby(prod_col)[col_revenue].sum().sort_values(ascending=False).head(10)
+                    fig, ax = plt.subplots(figsize=(6, 5), facecolor=CARD_BG)
+                    colors_bar = [PALETTE[0]] + [PALETTE[1]]*(len(top10)-1)
+                    ax.barh(range(len(top10)), top10.values[::-1], color=colors_bar, edgecolor="none")
+                    ax.set_yticks(range(len(top10)))
+                    labels = [str(l)[:22]+"…" if len(str(l))>22 else str(l) for l in top10.index[::-1]]
+                    ax.set_yticklabels(labels, fontsize=8)
+                    ax.set_facecolor(DARK_BG)
+                    plt.tight_layout(); st.pyplot(fig); plt.close()
+                elif prod_col:
+                    top10 = df[prod_col].value_counts().head(10)
+                    fig, ax = plt.subplots(figsize=(6, 5), facecolor=CARD_BG)
+                    ax.barh(range(len(top10)), top10.values[::-1], color=PALETTE[0], edgecolor="none")
+                    ax.set_yticks(range(len(top10)))
+                    labels = [str(l)[:22]+"…" if len(str(l))>22 else str(l) for l in top10.index[::-1]]
+                    ax.set_yticklabels(labels, fontsize=8)
+                    ax.set_facecolor(DARK_BG)
+                    plt.tight_layout(); st.pyplot(fig); plt.close()
+                else:
+                    st.info("No product/category column detected.")
+                st.markdown('</div>', unsafe_allow_html=True)
+
+            with r2c2:
+                st.markdown('<div class="analysis-card"><h4>🏷️ Discount Analysis</h4>', unsafe_allow_html=True)
+                if col_discount and col_revenue:
+                    fig, ax = plt.subplots(figsize=(6, 5), facecolor=CARD_BG)
+                    ax.scatter(df[col_discount], df[col_revenue],
+                               alpha=0.5, color="#7c3aed", edgecolors="none", s=20)
+                    m, b = np.polyfit(df[col_discount].dropna(), df[col_revenue].dropna(), 1)
+                    x_line = np.linspace(df[col_discount].min(), df[col_discount].max(), 100)
+                    ax.plot(x_line, m*x_line+b, color="#06b6d4", linewidth=2)
+                    ax.set_xlabel(col_discount, color=MUTED, fontsize=9)
+                    ax.set_ylabel(col_revenue, color=MUTED, fontsize=9)
+                    ax.set_facecolor(DARK_BG)
+                    plt.tight_layout(); st.pyplot(fig); plt.close()
+                elif col_discount:
+                    fig, ax = plt.subplots(figsize=(6, 5), facecolor=CARD_BG)
+                    ax.hist(df[col_discount].dropna(), bins=20, color="#f59e0b", edgecolor="none", alpha=0.85)
+                    ax.set_xlabel(col_discount, color=MUTED, fontsize=9)
+                    ax.set_facecolor(DARK_BG)
+                    plt.tight_layout(); st.pyplot(fig); plt.close()
+                elif summary['numeric_cols']:
+                    # Fallback: show numeric distributions
+                    num_col = summary['numeric_cols'][0]
+                    fig, ax = plt.subplots(figsize=(6, 5), facecolor=CARD_BG)
+                    ax.hist(df[num_col].dropna(), bins=25, color="#f59e0b", edgecolor="none", alpha=0.85)
+                    ax.set_title(f"Distribution: {num_col}", color=TEXT, fontsize=10)
+                    ax.set_facecolor(DARK_BG)
+                    plt.tight_layout(); st.pyplot(fig); plt.close()
+                else:
+                    st.info("No discount column detected.")
+                st.markdown('</div>', unsafe_allow_html=True)
+
+            # ── ROW 3 : Stock Status | Rating Distribution ────────────────────
+            r3c1, r3c2 = st.columns(2)
+
+            with r3c1:
+                st.markdown('<div class="analysis-card"><h4>📦 Stock Status</h4>', unsafe_allow_html=True)
+                if col_stock:
+                    if df[col_stock].dtype == object or df[col_stock].nunique() <= 6:
+                        # Categorical stock (In Stock / Out of Stock)
+                        stock_cnt = df[col_stock].value_counts()
+                        fig, ax = plt.subplots(figsize=(5, 4), facecolor=CARD_BG)
+                        colors_s = ["#10b981" if "in" in str(v).lower() or str(v)=="1"
+                                    else "#ef4444" for v in stock_cnt.index]
+                        ax.bar(stock_cnt.index.astype(str), stock_cnt.values, color=colors_s, edgecolor="none", width=0.5)
+                        ax.set_facecolor(DARK_BG)
+                        for i, v in enumerate(stock_cnt.values):
+                            ax.text(i, v + stock_cnt.max()*0.02, str(v), ha="center", color=TEXT, fontsize=9)
+                        plt.tight_layout(); st.pyplot(fig); plt.close()
+                    else:
+                        # Numeric stock — histogram
+                        fig, ax = plt.subplots(figsize=(6, 4), facecolor=CARD_BG)
+                        ax.hist(df[col_stock].dropna(), bins=25, color="#10b981", edgecolor="none", alpha=0.85)
+                        ax.axvline(df[col_stock].mean(), color="#f59e0b", linewidth=1.5, linestyle="--", label=f"Mean: {df[col_stock].mean():.0f}")
+                        ax.legend(fontsize=8, labelcolor=TEXT, facecolor=DARK_BG)
+                        ax.set_xlabel(col_stock, color=MUTED, fontsize=9)
+                        ax.set_facecolor(DARK_BG)
+                        plt.tight_layout(); st.pyplot(fig); plt.close()
+                else:
+                    # Show a summary table of any remaining numeric col
+                    if summary['numeric_cols']:
+                        nc = summary['numeric_cols'][-1]
+                        fig, ax = plt.subplots(figsize=(6, 4), facecolor=CARD_BG)
+                        ax.hist(df[nc].dropna(), bins=25, color="#10b981", edgecolor="none", alpha=0.85)
+                        ax.set_title(f"Distribution: {nc}", color=TEXT, fontsize=10)
+                        ax.set_facecolor(DARK_BG)
+                        plt.tight_layout(); st.pyplot(fig); plt.close()
+                    else:
+                        st.info("No stock column detected.")
+                st.markdown('</div>', unsafe_allow_html=True)
+
+            with r3c2:
+                st.markdown('<div class="analysis-card"><h4>⭐ Rating Distribution</h4>', unsafe_allow_html=True)
+                if col_rating:
+                    rating_counts = df[col_rating].dropna()
+                    fig, ax = plt.subplots(figsize=(6, 4), facecolor=CARD_BG)
+                    if rating_counts.nunique() <= 10:
+                        vc = rating_counts.value_counts().sort_index()
+                        bar_colors = [PALETTE[i % len(PALETTE)] for i in range(len(vc))]
+                        ax.bar(vc.index.astype(str), vc.values, color=bar_colors, edgecolor="none", width=0.6)
+                        for i, v in enumerate(vc.values):
+                            ax.text(i, v + vc.max()*0.02, str(v), ha="center", color=TEXT, fontsize=9)
+                    else:
+                        ax.hist(rating_counts, bins=20, color="#f59e0b", edgecolor="none", alpha=0.85)
+                        ax.axvline(rating_counts.mean(), color="#06b6d4", linewidth=1.5, linestyle="--",
+                                   label=f"Mean: {rating_counts.mean():.2f}")
+                        ax.legend(fontsize=8, labelcolor=TEXT, facecolor=DARK_BG)
+                    ax.set_facecolor(DARK_BG)
+                    ax.set_xlabel(col_rating, color=MUTED, fontsize=9)
+                    plt.tight_layout(); st.pyplot(fig); plt.close()
+                else:
+                    st.info("No rating column detected.")
+                st.markdown('</div>', unsafe_allow_html=True)
 
         with tab3:
             if st.session_state.analysis_done and st.session_state.ai_insights is None:
