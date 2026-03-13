@@ -1,843 +1,1322 @@
-import streamlit as st
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-import io
-import json
-import requests
-import re
-from datetime import datetime
-
-# ─── Page Config ────────────────────────────────────────────────────────────
-st.set_page_config(
-    page_title="AI Data Analyst",
-    page_icon="🔬",
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
-
-# ─── Custom CSS ──────────────────────────────────────────────────────────────
-st.markdown("""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DataLens — Intelligent Analysis System</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap');
+  :root {
+    --bg: #0a0d14;
+    --surface: #111520;
+    --surface2: #161b28;
+    --surface3: #1c2336;
+    --border: #252d42;
+    --accent: #4f8ef7;
+    --accent2: #7c5af7;
+    --accent3: #f75a8e;
+    --accent4: #5af7c8;
+    --accent5: #f7c15a;
+    --text: #e8ecf4;
+    --text2: #8892a8;
+    --text3: #4e5a70;
+    --success: #4caf82;
+    --warning: #f7a44a;
+    --danger: #f75a5a;
+    --radius: 12px;
+    --radius-lg: 18px;
+  }
 
-:root {
-    --bg: #0a0a0f;
-    --surface: #12121a;
-    --border: #1e1e2e;
-    --accent: #7c3aed;
-    --accent2: #06b6d4;
-    --text: #e2e8f0;
-    --muted: #64748b;
-    --success: #10b981;
-    --warning: #f59e0b;
-}
+  * { box-sizing: border-box; margin: 0; padding: 0; }
 
-html, body, [class*="css"] {
-    font-family: 'Syne', sans-serif;
-    background-color: var(--bg);
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
     color: var(--text);
-}
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
 
-/* Hide default streamlit elements */
-#MainMenu {visibility: hidden;}
-footer {visibility: hidden;}
-header {visibility: hidden;}
-.block-container {padding-top: 2rem; max-width: 1200px;}
-
-/* Hero Section */
-.hero {
-    text-align: center;
-    padding: 5rem 2rem 3rem;
-    background: radial-gradient(ellipse at 50% 0%, #7c3aed22 0%, transparent 70%);
-    border-bottom: 1px solid var(--border);
-    margin-bottom: 3rem;
-}
-.hero h1 {
-    font-family: 'Syne', sans-serif;
-    font-weight: 800;
-    font-size: clamp(2.5rem, 6vw, 4.5rem);
-    background: linear-gradient(135deg, #fff 30%, #7c3aed 70%, #06b6d4 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    line-height: 1.1;
-    margin-bottom: 1rem;
-}
-.hero p {
-    color: var(--muted);
-    font-size: 1.1rem;
-    max-width: 500px;
-    margin: 0 auto 2rem;
-}
-
-/* Glowing CTA Button */
-.cta-btn {
-    display: inline-block;
-    padding: 1rem 2.5rem;
-    background: linear-gradient(135deg, #7c3aed, #6d28d9);
-    border: 1px solid #8b5cf6;
-    border-radius: 8px;
-    color: white !important;
-    font-family: 'Space Mono', monospace;
-    font-size: 0.9rem;
-    text-decoration: none;
-    cursor: pointer;
-    box-shadow: 0 0 30px #7c3aed44, 0 4px 20px rgba(0,0,0,0.4);
-    transition: all 0.3s ease;
-    letter-spacing: 0.05em;
-}
-.cta-btn:hover {
-    box-shadow: 0 0 50px #7c3aed88, 0 8px 30px rgba(0,0,0,0.4);
-    transform: translateY(-2px);
-}
-
-/* Upload Zone */
-.upload-zone {
-    border: 2px dashed var(--accent);
-    border-radius: 16px;
-    padding: 3rem;
-    text-align: center;
-    background: linear-gradient(135deg, #7c3aed08, #06b6d408);
-    margin: 2rem 0;
-    transition: all 0.3s ease;
-}
-.upload-zone:hover {
-    background: linear-gradient(135deg, #7c3aed15, #06b6d415);
-    border-color: #8b5cf6;
-}
-.upload-icon { font-size: 3rem; margin-bottom: 1rem; }
-.upload-zone h3 { font-size: 1.3rem; margin-bottom: 0.5rem; }
-.upload-zone p { color: var(--muted); font-size: 0.9rem; }
-
-/* Stats Cards */
-.stats-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    gap: 1rem;
-    margin: 1.5rem 0;
-}
-.stat-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 1.2rem;
-    text-align: center;
-}
-.stat-number {
-    font-family: 'Space Mono', monospace;
-    font-size: 1.8rem;
-    font-weight: 700;
-    color: var(--accent2);
-    display: block;
-}
-.stat-label {
-    font-size: 0.75rem;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    margin-top: 0.3rem;
-    display: block;
-}
-
-/* Analysis Cards */
-.analysis-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 1.5rem;
-    margin: 1rem 0;
-}
-.analysis-card h4 {
-    font-family: 'Space Mono', monospace;
-    font-size: 0.8rem;
-    color: var(--accent2);
-    text-transform: uppercase;
-    letter-spacing: 0.15em;
-    margin-bottom: 1rem;
+  /* HEADER */
+  header {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-}
+    justify-content: space-between;
+    padding: 18px 32px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    backdrop-filter: blur(12px);
+  }
 
-/* Insight Box */
-.insight-box {
-    background: linear-gradient(135deg, #7c3aed15, #06b6d410);
-    border: 1px solid #7c3aed44;
-    border-left: 3px solid var(--accent);
-    border-radius: 8px;
-    padding: 1rem 1.5rem;
-    margin: 0.75rem 0;
-    font-size: 0.95rem;
-    line-height: 1.6;
-}
-.insight-box.warning {
-    border-left-color: var(--warning);
-    background: linear-gradient(135deg, #f59e0b10, transparent);
-}
-.insight-box.success {
-    border-left-color: var(--success);
-    background: linear-gradient(135deg, #10b98110, transparent);
-}
+  .logo {
+    font-family: 'Syne', sans-serif;
+    font-size: 22px;
+    font-weight: 800;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: -0.5px;
+  }
 
-/* Progress Bar */
-.progress-container {
-    background: var(--border);
-    border-radius: 4px;
-    height: 6px;
-    margin: 0.5rem 0;
+  .logo span { color: var(--accent3); -webkit-text-fill-color: var(--accent3); }
+
+  .header-right { display: flex; align-items: center; gap: 12px; }
+
+  .badge {
+    background: var(--surface3);
+    border: 1px solid var(--border);
+    color: var(--text2);
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 20px;
+  }
+
+  /* MAIN LAYOUT */
+  .container {
+    max-width: 1600px;
+    margin: 0 auto;
+    padding: 28px 32px;
+  }
+
+  /* UPLOAD ZONE */
+  #upload-zone {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: calc(100vh - 70px);
+    gap: 0;
+  }
+
+  .upload-card {
+    background: var(--surface);
+    border: 2px dashed var(--border);
+    border-radius: 24px;
+    padding: 64px 80px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    max-width: 640px;
+    width: 100%;
+    position: relative;
     overflow: hidden;
-}
-.progress-bar {
-    height: 100%;
-    border-radius: 4px;
-    background: linear-gradient(90deg, var(--accent), var(--accent2));
-    transition: width 0.5s ease;
-}
+  }
 
-/* Section Labels */
-.section-label {
-    font-family: 'Space Mono', monospace;
-    font-size: 0.7rem;
-    color: var(--accent);
-    text-transform: uppercase;
-    letter-spacing: 0.2em;
-    margin-bottom: 0.5rem;
-    display: block;
-}
+  .upload-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at 50% 0%, rgba(79,142,247,0.08) 0%, transparent 70%);
+    pointer-events: none;
+  }
 
-/* AI Response Styling */
-.ai-response {
+  .upload-card:hover, .upload-card.drag-over {
+    border-color: var(--accent);
+    background: var(--surface2);
+    transform: translateY(-2px);
+    box-shadow: 0 20px 60px rgba(79,142,247,0.15);
+  }
+
+  .upload-icon {
+    width: 72px;
+    height: 72px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 24px;
+    font-size: 32px;
+  }
+
+  .upload-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 28px;
+    font-weight: 700;
+    margin-bottom: 10px;
+    color: var(--text);
+  }
+
+  .upload-sub {
+    color: var(--text2);
+    font-size: 15px;
+    line-height: 1.6;
+    margin-bottom: 28px;
+  }
+
+  .upload-btn {
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    color: white;
+    border: none;
+    padding: 13px 32px;
+    border-radius: 10px;
+    font-size: 15px;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+    transition: opacity 0.2s;
+  }
+
+  .upload-btn:hover { opacity: 0.88; }
+
+  .file-types {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    margin-top: 20px;
+    flex-wrap: wrap;
+  }
+
+  .file-type-badge {
+    background: var(--surface3);
+    border: 1px solid var(--border);
+    color: var(--text2);
+    font-size: 12px;
+    font-family: 'DM Mono', monospace;
+    padding: 4px 12px;
+    border-radius: 6px;
+  }
+
+  #file-input { display: none; }
+
+  /* DASHBOARD */
+  #dashboard { display: none; }
+
+  /* TOP BAR */
+  .dash-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .file-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .file-name {
+    font-family: 'Syne', sans-serif;
+    font-size: 20px;
+    font-weight: 700;
+  }
+
+  .file-meta {
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    color: var(--text2);
+    background: var(--surface2);
+    padding: 4px 10px;
+    border-radius: 6px;
+  }
+
+  .reset-btn {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text2);
+    padding: 8px 18px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-family: 'DM Sans', sans-serif;
+    transition: all 0.2s;
+  }
+
+  .reset-btn:hover { border-color: var(--accent3); color: var(--accent3); }
+
+  /* CLEANING NOTES */
+  #cleaning-notes {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 2rem;
-    margin-top: 1rem;
-    line-height: 1.8;
-    font-size: 0.95rem;
-}
-.ai-badge {
-    display: inline-flex;
+    border-left: 3px solid var(--warning);
+    border-radius: var(--radius);
+    padding: 18px 22px;
+    margin-bottom: 24px;
+  }
+
+  .notes-header {
+    display: flex;
     align-items: center;
-    gap: 0.5rem;
-    background: linear-gradient(135deg, #7c3aed22, #06b6d422);
-    border: 1px solid #7c3aed44;
-    border-radius: 20px;
-    padding: 0.3rem 0.8rem;
-    font-size: 0.75rem;
-    font-family: 'Space Mono', monospace;
-    color: var(--accent2);
-    margin-bottom: 1rem;
-    letter-spacing: 0.05em;
-}
+    gap: 8px;
+    font-family: 'Syne', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--warning);
+    margin-bottom: 12px;
+  }
 
-/* Streamlit overrides */
-.stButton > button {
-    background: linear-gradient(135deg, #7c3aed, #6d28d9) !important;
-    border: 1px solid #8b5cf6 !important;
-    color: white !important;
-    font-family: 'Space Mono', monospace !important;
-    font-size: 0.85rem !important;
-    padding: 0.6rem 1.5rem !important;
-    border-radius: 8px !important;
-    transition: all 0.3s ease !important;
-    box-shadow: 0 0 20px #7c3aed33 !important;
-}
-.stButton > button:hover {
-    box-shadow: 0 0 40px #7c3aed66 !important;
-    transform: translateY(-1px) !important;
-}
-.stButton > button[kind="secondary"] {
-    background: transparent !important;
-    border: 1px solid var(--border) !important;
-    box-shadow: none !important;
-}
+  .note-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--text2);
+    padding: 5px 0;
+    border-bottom: 1px solid var(--border);
+    line-height: 1.5;
+  }
 
-.stTextArea textarea, .stTextInput input {
-    background: var(--surface) !important;
-    border: 1px solid var(--border) !important;
-    color: var(--text) !important;
-    border-radius: 8px !important;
-    font-family: 'Space Mono', monospace !important;
-}
-.stTextArea textarea:focus, .stTextInput input:focus {
-    border-color: var(--accent) !important;
-    box-shadow: 0 0 0 2px #7c3aed33 !important;
-}
+  .note-item:last-child { border-bottom: none; }
 
-.stDataFrame { border-radius: 12px; overflow: hidden; }
-.stTabs [data-baseweb="tab"] {
-    font-family: 'Space Mono', monospace !important;
-    font-size: 0.8rem !important;
-}
-.stTabs [aria-selected="true"] {
-    color: var(--accent2) !important;
-}
-div[data-testid="stMetricValue"] {
-    font-family: 'Space Mono', monospace !important;
-    color: var(--accent2) !important;
-}
+  .note-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--warning);
+    flex-shrink: 0;
+    margin-top: 6px;
+  }
 
-/* Divider */
-.styled-divider {
+  .note-dot.success { background: var(--success); }
+  .note-dot.danger { background: var(--danger); }
+
+  /* STATS GRID */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 14px;
+    margin-bottom: 24px;
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px 20px;
+    position: relative;
+    overflow: hidden;
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+
+  .stat-card:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(0,0,0,0.3); }
+
+  .stat-card::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--stat-color, var(--accent));
+  }
+
+  .stat-label {
+    font-size: 11px;
+    color: var(--text3);
+    font-family: 'DM Mono', monospace;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    margin-bottom: 8px;
+  }
+
+  .stat-val {
+    font-family: 'Syne', sans-serif;
+    font-size: 26px;
+    font-weight: 700;
+    color: var(--stat-color, var(--text));
+  }
+
+  .stat-sub { font-size: 11px; color: var(--text3); margin-top: 3px; }
+
+  /* TABS */
+  .tab-bar {
+    display: flex;
+    gap: 4px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 6px;
+    margin-bottom: 24px;
+    overflow-x: auto;
+  }
+
+  .tab-btn {
+    padding: 9px 18px;
+    border-radius: 8px;
     border: none;
+    background: transparent;
+    color: var(--text2);
+    font-size: 13px;
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+
+  .tab-btn:hover { color: var(--text); background: var(--surface2); }
+
+  .tab-btn.active {
+    background: var(--accent);
+    color: white;
+  }
+
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  /* CHARTS GRID */
+  .charts-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(460px, 1fr));
+    gap: 20px;
+    margin-bottom: 24px;
+  }
+
+  .chart-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 22px 24px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .chart-card.full-width {
+    grid-column: 1 / -1;
+  }
+
+  .chart-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 18px;
+    gap: 12px;
+  }
+
+  .chart-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  .chart-subtitle {
+    font-size: 12px;
+    color: var(--text3);
+    margin-top: 3px;
+    font-family: 'DM Mono', monospace;
+  }
+
+  .chart-type-badge {
+    font-size: 11px;
+    font-family: 'DM Mono', monospace;
+    padding: 3px 9px;
+    border-radius: 5px;
+    background: var(--surface3);
+    color: var(--text3);
+    flex-shrink: 0;
+  }
+
+  .chart-wrap {
+    position: relative;
+    width: 100%;
+  }
+
+  /* PIVOT TABLE */
+  .pivot-wrap {
+    overflow-x: auto;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+  }
+
+  .pivot-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    font-family: 'DM Mono', monospace;
+  }
+
+  .pivot-table th {
+    background: var(--surface3);
+    color: var(--text2);
+    padding: 10px 14px;
+    text-align: left;
+    font-weight: 500;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .pivot-table td {
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+  }
+
+  .pivot-table tr:last-child td { border-bottom: none; }
+  .pivot-table tr:hover td { background: var(--surface2); }
+  .pivot-table td.num { text-align: right; color: var(--accent4); }
+  .pivot-table td.label { color: var(--text2); }
+
+  /* DATA PREVIEW TABLE */
+  .data-table-wrap {
+    overflow-x: auto;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    max-height: 500px;
+    overflow-y: auto;
+  }
+
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    font-family: 'DM Mono', monospace;
+  }
+
+  .data-table th {
+    background: var(--surface3);
+    color: var(--accent);
+    padding: 11px 14px;
+    text-align: left;
+    font-weight: 500;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    font-size: 11px;
+  }
+
+  .data-table td {
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text2);
+    white-space: nowrap;
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .data-table tr:hover td { background: var(--surface2); color: var(--text); }
+
+  /* HEATMAP */
+  .heatmap-container {
+    overflow-x: auto;
+  }
+
+  .heatmap-table {
+    border-collapse: collapse;
+    font-size: 11px;
+    font-family: 'DM Mono', monospace;
+    width: 100%;
+  }
+
+  .heatmap-table th {
+    padding: 8px 10px;
+    color: var(--text2);
+    font-weight: 400;
+    text-align: center;
+    white-space: nowrap;
+    font-size: 10px;
+  }
+
+  .heatmap-table td {
+    width: 60px;
+    height: 44px;
+    text-align: center;
+    font-size: 11px;
+    font-weight: 500;
+    border: 2px solid var(--bg);
+    border-radius: 4px;
+    transition: transform 0.15s;
+  }
+
+  .heatmap-table td:hover { transform: scale(1.08); z-index: 2; position: relative; cursor: default; }
+
+  /* SECTION TITLE */
+  .section-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .section-title::after {
+    content: '';
+    flex: 1;
     height: 1px;
-    background: linear-gradient(90deg, transparent, var(--border), transparent);
-    margin: 2rem 0;
-}
+    background: var(--border);
+  }
+
+  /* COLUMN GRID */
+  .col-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+
+  .col-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .col-card:hover { border-color: var(--accent); }
+
+  .col-name {
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text);
+    margin-bottom: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .col-type {
+    font-size: 11px;
+    padding: 2px 7px;
+    border-radius: 4px;
+    display: inline-block;
+    font-family: 'DM Mono', monospace;
+  }
+
+  .col-type.numeric { background: rgba(79,142,247,0.15); color: var(--accent); }
+  .col-type.categorical { background: rgba(124,90,247,0.15); color: var(--accent2); }
+  .col-type.date { background: rgba(90,247,200,0.15); color: var(--accent4); }
+
+  /* LOADING */
+  #loading-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(10,13,20,0.85);
+    backdrop-filter: blur(8px);
+    z-index: 999;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  #loading-overlay.show { display: flex; }
+
+  .spinner {
+    width: 44px;
+    height: 44px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .loading-text {
+    font-family: 'DM Mono', monospace;
+    font-size: 14px;
+    color: var(--text2);
+  }
+
+  /* EMPTY STATE */
+  .empty-state {
+    text-align: center;
+    padding: 48px;
+    color: var(--text3);
+    font-size: 14px;
+  }
+
+  /* RESPONSIVE */
+  @media (max-width: 768px) {
+    .charts-grid { grid-template-columns: 1fr; }
+    header { padding: 14px 18px; }
+    .container { padding: 18px; }
+    .upload-card { padding: 40px 24px; }
+  }
 </style>
-""", unsafe_allow_html=True)
+</head>
+<body>
 
-# ─── Helper: Claude API ──────────────────────────────────────────────────────
-def ask_claude(system_prompt, user_prompt):
-    headers = {"Content-Type": "application/json"}
-    body = {
-        "model": "claude-sonnet-4-20250514",
-        "max_tokens": 1500,
-        "system": system_prompt,
-        "messages": [{"role": "user", "content": user_prompt}]
-    }
-    try:
-        resp = requests.post("https://api.anthropic.com/v1/messages", headers=headers, json=body, timeout=60)
-        data = resp.json()
-        return data["content"][0]["text"]
-    except Exception as e:
-        return f"Error contacting AI: {str(e)}"
+<div id="loading-overlay">
+  <div class="spinner"></div>
+  <div class="loading-text">Analyzing your data...</div>
+</div>
 
-# ─── Data Helpers ────────────────────────────────────────────────────────────
-def load_data(file):
-    name = file.name.lower()
-    try:
-        if name.endswith(".csv"):
-            df = pd.read_csv(file, encoding="utf-8")
-        elif name.endswith((".xls", ".xlsx")):
-            df = pd.read_excel(file)
-        elif name.endswith(".json"):
-            df = pd.read_json(file)
-        elif name.endswith(".tsv"):
-            df = pd.read_csv(file, sep="\t", encoding="utf-8")
-        else:
-            return None
-    except UnicodeDecodeError:
-        # Retry with latin-1 for CSV/TSV if UTF-8 fails
-        file.seek(0)
-        if name.endswith(".csv"):
-            df = pd.read_csv(file, encoding="latin-1")
-        elif name.endswith(".tsv"):
-            df = pd.read_csv(file, sep="\t", encoding="latin-1")
-        else:
-            return None
+<header>
+  <div class="logo">Data<span>Lens</span></div>
+  <div class="header-right">
+    <div class="badge">Intelligent Analysis System</div>
+  </div>
+</header>
 
-    # Auto-convert columns that look numeric but were read as strings
-    for col in df.columns:
-        if df[col].dtype == object:
-            # Strip whitespace
-            df[col] = df[col].astype(str).str.strip()
-            # Try converting to numeric (handles commas like "1,234")
-            converted = df[col].str.replace(",", "", regex=False)
-            converted = pd.to_numeric(converted, errors="coerce")
-            # Only replace if most values converted successfully (>50%)
-            if converted.notna().sum() / max(len(df), 1) > 0.5:
-                df[col] = converted
-
-    return df
-
-def df_summary(df):
-    numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
-    cat_cols = df.select_dtypes(include="object").columns.tolist()
-    missing = df.isnull().sum().sum()
-    dup = df.duplicated().sum()
-    return {
-        "rows": len(df),
-        "cols": len(df.columns),
-        "numeric": len(numeric_cols),
-        "categorical": len(cat_cols),
-        "missing": int(missing),
-        "duplicates": int(dup),
-        "numeric_cols": numeric_cols,
-        "cat_cols": cat_cols,
-    }
-
-def build_context(df, summary):
-    ctx = f"""Dataset: {summary['rows']} rows × {summary['cols']} columns
-Numeric columns ({summary['numeric']}): {', '.join(summary['numeric_cols'][:10])}
-Categorical columns ({summary['categorical']}): {', '.join(summary['cat_cols'][:10])}
-Missing values: {summary['missing']}
-Duplicates: {summary['duplicates']}
-
-Basic Statistics:
-{df.describe().to_string()}
-
-First 5 rows:
-{df.head().to_string()}
-"""
-    return ctx
-
-# ─── Session State Init ───────────────────────────────────────────────────────
-for key in ["show_upload", "df", "analysis_done", "ai_insights", "user_question", "ai_answer"]:
-    if key not in st.session_state:
-        st.session_state[key] = None if key not in ["show_upload", "analysis_done"] else False
-
-# ─── HERO SECTION ─────────────────────────────────────────────────────────────
-if not st.session_state.show_upload:
-    st.markdown("""
-    <div class="hero">
-        <h1>AI Data<br>Analyst</h1>
-        <p>Drop your data. Get instant AI-powered insights, visualizations, and deep analysis.</p>
+<!-- UPLOAD ZONE -->
+<div id="upload-zone">
+  <div class="upload-card" id="drop-zone">
+    <div class="upload-icon">📊</div>
+    <div class="upload-title">Upload Your Dataset</div>
+    <div class="upload-sub">Drop your file here and DataLens will automatically clean it,<br>analyze it, and generate interactive visualizations.</div>
+    <button class="upload-btn" onclick="document.getElementById('file-input').click()">Choose File</button>
+    <div class="file-types">
+      <span class="file-type-badge">.CSV</span>
+      <span class="file-type-badge">.XLSX</span>
+      <span class="file-type-badge">.XLS</span>
+      <span class="file-type-badge">.JSON</span>
+      <span class="file-type-badge">.TSV</span>
     </div>
-    """, unsafe_allow_html=True)
+    <input type="file" id="file-input" accept=".csv,.xlsx,.xls,.json,.tsv">
+  </div>
+</div>
 
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("⚡  Start Analysis →", use_container_width=True):
-            st.session_state.show_upload = True
-            st.rerun()
-
-        st.markdown("""
-        <div style="display:flex; gap:2rem; justify-content:center; margin-top:3rem; flex-wrap:wrap;">
-            <div style="text-align:center">
-                <div style="font-size:1.5rem">📊</div>
-                <div style="font-size:0.8rem; color:#64748b; margin-top:0.3rem">CSV · Excel · JSON · TSV</div>
-            </div>
-            <div style="text-align:center">
-                <div style="font-size:1.5rem">🤖</div>
-                <div style="font-size:0.8rem; color:#64748b; margin-top:0.3rem">AI-Powered Insights</div>
-            </div>
-            <div style="text-align:center">
-                <div style="font-size:1.5rem">📈</div>
-                <div style="font-size:0.8rem; color:#64748b; margin-top:0.3rem">Auto Visualizations</div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-# ─── UPLOAD & ANALYSIS SECTION ────────────────────────────────────────────────
-else:
-    st.markdown("""
-    <div style="padding:2rem 0 1rem;">
-        <span class="section-label">⚡ AI Data Analyst</span>
-        <h2 style="font-size:1.8rem; font-weight:800; margin:0;">Upload Your Data</h2>
+<!-- DASHBOARD -->
+<div id="dashboard">
+  <div class="container">
+    <!-- Top bar -->
+    <div class="dash-topbar">
+      <div class="file-info">
+        <span class="file-name" id="file-display-name">dataset.csv</span>
+        <span class="file-meta" id="file-meta-info"></span>
+      </div>
+      <button class="reset-btn" onclick="resetDashboard()">← Upload New File</button>
     </div>
-    """, unsafe_allow_html=True)
 
-    # ── File Uploader ──
-    if st.session_state.df is None:
-        st.markdown("""
-        <div class="upload-zone">
-            <div class="upload-icon">📂</div>
-            <h3>Drop your dataset here</h3>
-            <p>Supports CSV, Excel (.xlsx), JSON, TSV</p>
+    <!-- Cleaning Notes -->
+    <div id="cleaning-notes" style="display:none">
+      <div class="notes-header">⚠ Data Cleaning Report</div>
+      <div id="notes-list"></div>
+    </div>
+
+    <!-- Stats Row -->
+    <div class="stats-grid" id="stats-grid"></div>
+
+    <!-- Tabs -->
+    <div class="tab-bar">
+      <button class="tab-btn active" onclick="switchTab('overview', this)">📊 Overview</button>
+      <button class="tab-btn" onclick="switchTab('distributions', this)">📈 Distributions</button>
+      <button class="tab-btn" onclick="switchTab('relationships', this)">🔗 Relationships</button>
+      <button class="tab-btn" onclick="switchTab('pivot', this)">🗂 Pivot Tables</button>
+      <button class="tab-btn" onclick="switchTab('data', this)">🗄 Raw Data</button>
+    </div>
+
+    <!-- Overview Tab -->
+    <div id="tab-overview" class="tab-content active">
+      <div class="section-title">Column Overview</div>
+      <div class="col-grid" id="col-grid"></div>
+      <div class="section-title">Key Charts</div>
+      <div class="charts-grid" id="overview-charts"></div>
+    </div>
+
+    <!-- Distributions Tab -->
+    <div id="tab-distributions" class="tab-content">
+      <div class="section-title">Distributions & Frequencies</div>
+      <div class="charts-grid" id="dist-charts"></div>
+    </div>
+
+    <!-- Relationships Tab -->
+    <div id="tab-relationships" class="tab-content">
+      <div class="section-title">Correlations & Relationships</div>
+      <div class="charts-grid" id="rel-charts"></div>
+      <div class="chart-card full-width" id="heatmap-card" style="display:none">
+        <div class="chart-header">
+          <div>
+            <div class="chart-title">Correlation Heatmap</div>
+            <div class="chart-subtitle">Numeric columns — correlation matrix</div>
+          </div>
+          <span class="chart-type-badge">HEATMAP</span>
         </div>
-        """, unsafe_allow_html=True)
+        <div class="heatmap-container" id="heatmap-container"></div>
+      </div>
+    </div>
 
-        uploaded = st.file_uploader(
-            "Choose a file",
-            type=["csv", "xlsx", "xls", "json", "tsv"],
-            label_visibility="collapsed"
-        )
+    <!-- Pivot Tables Tab -->
+    <div id="tab-pivot" class="tab-content">
+      <div class="section-title">Pivot Tables</div>
+      <div id="pivot-tables"></div>
+    </div>
 
-        col_a, col_b = st.columns([3, 1])
-        with col_b:
-            if st.button("← Back to Home", use_container_width=True):
-                st.session_state.show_upload = False
-                st.rerun()
+    <!-- Raw Data Tab -->
+    <div id="tab-data" class="tab-content">
+      <div class="section-title">Data Preview (first 200 rows)</div>
+      <div class="data-table-wrap" id="data-table-wrap"></div>
+    </div>
+  </div>
+</div>
 
-        if uploaded:
-            df = load_data(uploaded)
-            if df is not None:
-                st.session_state.df = df
-                st.session_state.analysis_done = False
-                st.session_state.ai_insights = None
-                st.success(f"✅ Loaded **{uploaded.name}** — {len(df):,} rows × {len(df.columns)} columns")
+<script>
+// ── Chart registry (for destroy before re-render)
+const chartRegistry = {};
 
-                col1, col2 = st.columns([2, 1])
-                with col1:
-                    if st.button("🚀  Run Full Analysis", use_container_width=True):
-                        st.session_state.analysis_done = True
-                        st.rerun()
-            else:
-                st.error("Could not parse the file. Please try a different format.")
+// ── Color palette
+const PALETTE = [
+  '#4f8ef7','#7c5af7','#f75a8e','#5af7c8','#f7c15a',
+  '#f75a5a','#5af75a','#f7985a','#5ab3f7','#c55af7'
+];
 
-    # ── Analysis Results ──
-    else:
-        df = st.session_state.df
-        summary = df_summary(df)
+// ── Global data store
+let gData = [], gColumns = [], gFileName = '';
 
-        # Quick Stats Bar
-        st.markdown(f"""
-        <div class="stats-grid">
-            <div class="stat-card">
-                <span class="stat-number">{summary['rows']:,}</span>
-                <span class="stat-label">Rows</span>
-            </div>
-            <div class="stat-card">
-                <span class="stat-number">{summary['cols']}</span>
-                <span class="stat-label">Columns</span>
-            </div>
-            <div class="stat-card">
-                <span class="stat-number">{summary['numeric']}</span>
-                <span class="stat-label">Numeric</span>
-            </div>
-            <div class="stat-card">
-                <span class="stat-number">{summary['missing']}</span>
-                <span class="stat-label">Missing</span>
-            </div>
-            <div class="stat-card">
-                <span class="stat-number">{summary['duplicates']}</span>
-                <span class="stat-label">Duplicates</span>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+// ──────────────────────────────────────────────
+//  FILE HANDLING
+// ──────────────────────────────────────────────
+document.getElementById('file-input').addEventListener('change', e => {
+  if (e.target.files[0]) handleFile(e.target.files[0]);
+});
 
-        col_reset, col_analyze = st.columns([1, 2])
-        with col_reset:
-            if st.button("🔄 Upload New File"):
-                st.session_state.df = None
-                st.session_state.analysis_done = False
-                st.session_state.ai_insights = None
-                st.rerun()
-        with col_analyze:
-            if not st.session_state.analysis_done:
-                if st.button("🚀  Run Full Analysis", use_container_width=True):
-                    st.session_state.analysis_done = True
-                    st.rerun()
+const dropZone = document.getElementById('drop-zone');
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+});
 
-        st.markdown('<hr class="styled-divider">', unsafe_allow_html=True)
+function handleFile(file) {
+  gFileName = file.name;
+  showLoading();
+  const ext = file.name.split('.').pop().toLowerCase();
 
-        # ── Tabs ──
-        tab1, tab2, tab3, tab4 = st.tabs(["📋 Data Preview", "📊 Visualizations", "🤖 AI Insights", "💬 Ask AI"])
+  if (ext === 'csv' || ext === 'tsv') {
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const result = Papa.parse(ev.target.result, { header: true, skipEmptyLines: true, dynamicTyping: true, delimiter: ext === 'tsv' ? '\t' : undefined });
+      processData(result.data, result.meta.fields);
+    };
+    reader.readAsText(file);
+  } else if (ext === 'xlsx' || ext === 'xls') {
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const wb = XLSX.read(ev.target.result, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { defval: null });
+      const cols = rows.length ? Object.keys(rows[0]) : [];
+      processData(rows, cols);
+    };
+    reader.readAsArrayBuffer(file);
+  } else if (ext === 'json') {
+    const reader = new FileReader();
+    reader.onload = ev => {
+      let data = JSON.parse(ev.target.result);
+      if (!Array.isArray(data)) data = [data];
+      const cols = data.length ? Object.keys(data[0]) : [];
+      processData(data, cols);
+    };
+    reader.readAsText(file);
+  } else {
+    hideLoading();
+    alert('Unsupported file format. Please use CSV, XLSX, XLS, JSON, or TSV.');
+  }
+}
 
-        with tab1:
-            st.markdown('<div class="analysis-card"><h4>🗂 Dataset Preview</h4>', unsafe_allow_html=True)
-            st.dataframe(df.head(50), use_container_width=True, height=350)
-            st.markdown('</div>', unsafe_allow_html=True)
+// ──────────────────────────────────────────────
+//  DATA PROCESSING
+// ──────────────────────────────────────────────
+function processData(raw, cols) {
+  const notes = [];
+  let data = raw.map(r => ({ ...r }));
 
-            col_l, col_r = st.columns(2)
-            with col_l:
-                st.markdown('<div class="analysis-card"><h4>📐 Column Types</h4>', unsafe_allow_html=True)
-                dtype_df = pd.DataFrame({"Column": df.columns, "Type": df.dtypes.values.astype(str),
-                                         "Non-Null": df.count().values, "Null%": (df.isnull().mean()*100).round(1).values})
-                st.dataframe(dtype_df, use_container_width=True, hide_index=True)
-                st.markdown('</div>', unsafe_allow_html=True)
-            with col_r:
-                if summary['numeric_cols']:
-                    st.markdown('<div class="analysis-card"><h4>📈 Descriptive Stats</h4>', unsafe_allow_html=True)
-                    st.dataframe(df[summary['numeric_cols']].describe().round(3), use_container_width=True)
-                    st.markdown('</div>', unsafe_allow_html=True)
+  // 1. Remove completely empty rows
+  const before = data.length;
+  data = data.filter(r => cols.some(c => r[c] !== null && r[c] !== '' && r[c] !== undefined));
+  if (data.length < before) notes.push({ type: 'warning', msg: `Removed ${before - data.length} fully empty row(s).` });
 
-        with tab2:
-            # ── Chart theme ──
-            DARK_BG   = "#0a0a0f"
-            CARD_BG   = "#12121a"
-            BORDER    = "#1e1e2e"
-            TEXT      = "#e2e8f0"
-            MUTED     = "#64748b"
-            PALETTE   = ["#7c3aed","#06b6d4","#10b981","#f59e0b","#ef4444","#8b5cf6","#ec4899","#14b8a6"]
+  // 2. Trim whitespace on string cols
+  cols.forEach(c => {
+    let trimmed = 0;
+    data.forEach(r => {
+      if (typeof r[c] === 'string' && r[c] !== r[c].trim()) { r[c] = r[c].trim(); trimmed++; }
+    });
+    if (trimmed > 0) notes.push({ type: 'success', msg: `Trimmed whitespace in "${c}" (${trimmed} cells).` });
+  });
 
-            plt.rcParams.update({
-                "figure.facecolor": CARD_BG, "axes.facecolor": DARK_BG,
-                "text.color": TEXT, "axes.labelcolor": MUTED,
-                "xtick.color": MUTED, "ytick.color": MUTED,
-                "axes.edgecolor": BORDER, "grid.color": BORDER,
-                "axes.grid": True, "grid.alpha": 0.3,
-            })
+  // 3. Detect & parse date columns
+  cols.forEach(c => {
+    const sample = data.slice(0, 20).map(r => r[c]).filter(v => v !== null && v !== '');
+    const dateCount = sample.filter(v => {
+      if (typeof v === 'string') { const d = new Date(v); return !isNaN(d) && v.match(/\d{2,4}[-/]\d{1,2}[-/]\d{1,2}/); }
+      return false;
+    }).length;
+    if (dateCount / sample.length > 0.6) {
+      notes.push({ type: 'success', msg: `Detected date format in column "${c}" — parsed as Date.` });
+    }
+  });
 
-            cols_lower = {c: c.lower().replace(" ","_").replace("-","_") for c in df.columns}
-            rev_map    = {v: k for k, v in cols_lower.items()}
+  // 4. Detect nulls/missing
+  const nullCols = {};
+  cols.forEach(c => {
+    const nullCount = data.filter(r => r[c] === null || r[c] === '' || r[c] === undefined).length;
+    if (nullCount > 0) nullCols[c] = nullCount;
+  });
+  Object.entries(nullCols).forEach(([c, n]) => {
+    const pct = ((n / data.length) * 100).toFixed(1);
+    notes.push({ type: pct > 30 ? 'danger' : 'warning', msg: `Column "${c}" has ${n} missing values (${pct}%).` });
+  });
 
-            def find_col(*keywords):
-                """Return first df column whose lowered name contains any keyword."""
-                for kw in keywords:
-                    for orig, low in cols_lower.items():
-                        if kw in low:
-                            return orig
-                return None
+  // 5. Duplicate rows
+  const seen = new Set();
+  let dupCount = 0;
+  data = data.filter(r => {
+    const key = JSON.stringify(r);
+    if (seen.has(key)) { dupCount++; return false; }
+    seen.add(key); return true;
+  });
+  if (dupCount > 0) notes.push({ type: 'warning', msg: `Removed ${dupCount} duplicate row(s).` });
 
-            # Detect key columns
-            col_revenue  = find_col("total_price","revenue","sales","amount","total","price")
-            col_units    = find_col("quantity","units","qty","count","sold")
-            col_rating   = find_col("rating","score","review","stars")
-            col_returns  = find_col("return","refund","cancel")
-            col_category = find_col("category","dept","department","type","segment","product_line","productline")
-            col_gender   = find_col("gender","sex","customer_gender")
-            col_product  = find_col("product","item","name","product_name","sku","description")
-            col_discount = find_col("discount","promo","offer","reduction")
-            col_stock    = find_col("stock","inventory","qty_stock","available","in_stock","quantity_in_stock")
+  // 6. Fill missing numerics with median
+  cols.forEach(c => {
+    const vals = data.map(r => r[c]).filter(v => typeof v === 'number' && !isNaN(v));
+    if (vals.length === 0) return;
+    const nullCount = data.filter(r => r[c] === null || r[c] === '' || r[c] === undefined).length;
+    if (nullCount > 0 && nullCount < data.length * 0.5) {
+      const sorted = [...vals].sort((a, b) => a - b);
+      const median = sorted[Math.floor(sorted.length / 2)];
+      data.forEach(r => { if (r[c] === null || r[c] === '' || r[c] === undefined) r[c] = median; });
+      notes.push({ type: 'success', msg: `Filled ${nullCount} missing values in "${c}" with median (${median}).` });
+    }
+  });
 
-            # ── ROW 0 : KPI Cards ─────────────────────────────────────────────
-            st.markdown("#### 📌 Key Metrics")
-            k1, k2, k3, k4 = st.columns(4)
+  gData = data;
+  gColumns = cols;
 
-            def kpi_card(col_widget, icon, label, value, delta=None):
-                col_widget.markdown(f"""
-                <div class="stat-card" style="padding:1.4rem 1rem;">
-                    <div style="font-size:1.6rem;margin-bottom:.4rem">{icon}</div>
-                    <span class="stat-number" style="font-size:1.5rem">{value}</span>
-                    <span class="stat-label">{label}</span>
-                    {"<span style='font-size:.75rem;color:#10b981'>"+delta+"</span>" if delta else ""}
-                </div>""", unsafe_allow_html=True)
+  setTimeout(() => {
+    hideLoading();
+    renderDashboard(notes);
+  }, 400);
+}
 
-            # Total Revenue
-            if col_revenue:
-                total_rev = df[col_revenue].sum()
-                kpi_card(k1, "💰", "Total Revenue",
-                         f"${total_rev:,.0f}" if total_rev > 1000 else f"{total_rev:,.2f}")
-            else:
-                kpi_card(k1, "💰", "Total Revenue", "N/A")
+// ──────────────────────────────────────────────
+//  COLUMN CLASSIFICATION
+// ──────────────────────────────────────────────
+function classifyCols(data, cols) {
+  const numeric = [], categorical = [], dateCols = [];
+  cols.forEach(c => {
+    const vals = data.map(r => r[c]).filter(v => v !== null && v !== '' && v !== undefined);
+    const numVals = vals.filter(v => typeof v === 'number' && !isNaN(v));
+    const unique = new Set(vals).size;
+    if (numVals.length / vals.length > 0.7) numeric.push(c);
+    else if (vals.some(v => typeof v === 'string' && v.match(/\d{2,4}[-/]\d{1,2}[-/]\d{1,2}/))) dateCols.push(c);
+    else categorical.push(c);
+  });
+  return { numeric, categorical, dateCols };
+}
 
-            # Units Sold
-            if col_units:
-                total_units = df[col_units].sum()
-                kpi_card(k2, "📦", "Units Sold", f"{int(total_units):,}")
-            else:
-                kpi_card(k2, "📦", "Units Sold", f"{len(df):,} rows")
+// ──────────────────────────────────────────────
+//  STATS
+// ──────────────────────────────────────────────
+function numStats(data, col) {
+  const vals = data.map(r => r[col]).filter(v => typeof v === 'number' && !isNaN(v));
+  if (!vals.length) return {};
+  const sorted = [...vals].sort((a, b) => a - b);
+  const sum = vals.reduce((a, b) => a + b, 0);
+  const mean = sum / vals.length;
+  const variance = vals.reduce((a, v) => a + (v - mean) ** 2, 0) / vals.length;
+  return {
+    min: sorted[0], max: sorted[sorted.length - 1],
+    mean: +mean.toFixed(2), median: sorted[Math.floor(sorted.length / 2)],
+    std: +Math.sqrt(variance).toFixed(2), count: vals.length, sum: +sum.toFixed(2)
+  };
+}
 
-            # Avg Rating
-            if col_rating:
-                avg_rating = df[col_rating].mean()
-                kpi_card(k3, "⭐", "Avg Rating", f"{avg_rating:.2f}")
-            else:
-                kpi_card(k3, "⭐", "Avg Rating", "N/A")
+function valueCounts(data, col) {
+  const counts = {};
+  data.forEach(r => {
+    const v = r[col];
+    if (v !== null && v !== '' && v !== undefined) counts[v] = (counts[v] || 0) + 1;
+  });
+  return Object.entries(counts).sort((a, b) => b[1] - a[1]);
+}
 
-            # Returns
-            if col_returns:
-                total_ret = df[col_returns].sum() if df[col_returns].dtype != object else df[col_returns].str.lower().isin(["yes","true","1","returned"]).sum()
-                kpi_card(k4, "↩️", "Returns", f"{int(total_ret):,}")
-            else:
-                kpi_card(k4, "↩️", "Returns", "N/A")
+function correlationMatrix(data, numCols) {
+  const means = {}, stds = {};
+  numCols.forEach(c => {
+    const s = numStats(data, c);
+    means[c] = s.mean; stds[c] = s.std;
+  });
+  const matrix = {};
+  numCols.forEach(c1 => {
+    matrix[c1] = {};
+    numCols.forEach(c2 => {
+      const vals = data.filter(r =>
+        typeof r[c1] === 'number' && !isNaN(r[c1]) &&
+        typeof r[c2] === 'number' && !isNaN(r[c2])
+      );
+      if (!vals.length || !stds[c1] || !stds[c2]) { matrix[c1][c2] = 0; return; }
+      const cov = vals.reduce((a, r) => a + (r[c1] - means[c1]) * (r[c2] - means[c2]), 0) / vals.length;
+      matrix[c1][c2] = +(cov / (stds[c1] * stds[c2])).toFixed(3);
+    });
+  });
+  return matrix;
+}
 
-            st.markdown('<hr class="styled-divider">', unsafe_allow_html=True)
+// ──────────────────────────────────────────────
+//  RENDER DASHBOARD
+// ──────────────────────────────────────────────
+function renderDashboard(notes) {
+  // Destroy old charts
+  Object.values(chartRegistry).forEach(c => c.destroy());
+  Object.keys(chartRegistry).forEach(k => delete chartRegistry[k]);
 
-            # ── ROW 1 : Sales by Category | Sales by Gender ───────────────────
-            r1c1, r1c2 = st.columns(2)
+  const data = gData, cols = gColumns;
+  const { numeric, categorical, dateCols } = classifyCols(data, cols);
 
-            with r1c1:
-                st.markdown('<div class="analysis-card"><h4>🏷️ Sales by Category</h4>', unsafe_allow_html=True)
-                if col_category and col_revenue:
-                    cat_rev = df.groupby(col_category)[col_revenue].sum().sort_values(ascending=False).head(8)
-                    fig, ax = plt.subplots(figsize=(6, 4), facecolor=CARD_BG)
-                    bars = ax.barh(cat_rev.index[::-1], cat_rev.values[::-1], color=PALETTE[:len(cat_rev)], edgecolor="none", height=0.6)
-                    ax.set_facecolor(DARK_BG)
-                    ax.set_xlabel("Revenue", color=MUTED, fontsize=9)
-                    for bar, val in zip(bars, cat_rev.values[::-1]):
-                        ax.text(bar.get_width()*1.01, bar.get_y()+bar.get_height()/2,
-                                f"${val:,.0f}", va="center", color=TEXT, fontsize=8)
-                    plt.tight_layout()
-                    st.pyplot(fig); plt.close()
-                elif col_category:
-                    cat_cnt = df[col_category].value_counts().head(8)
-                    fig, ax = plt.subplots(figsize=(6, 4), facecolor=CARD_BG)
-                    ax.barh(cat_cnt.index[::-1], cat_cnt.values[::-1], color=PALETTE[:len(cat_cnt)], edgecolor="none")
-                    ax.set_facecolor(DARK_BG)
-                    plt.tight_layout(); st.pyplot(fig); plt.close()
-                else:
-                    st.info("No category column detected.")
-                st.markdown('</div>', unsafe_allow_html=True)
+  // File info
+  document.getElementById('file-display-name').textContent = gFileName;
+  document.getElementById('file-meta-info').textContent = `${data.length} rows × ${cols.length} cols`;
 
-            with r1c2:
-                st.markdown('<div class="analysis-card"><h4>👥 Sales by Gender</h4>', unsafe_allow_html=True)
-                if col_gender and col_revenue:
-                    gen_rev = df.groupby(col_gender)[col_revenue].sum()
-                    fig, ax = plt.subplots(figsize=(5, 4), facecolor=CARD_BG)
-                    wedges, texts, autotexts = ax.pie(
-                        gen_rev.values, labels=gen_rev.index,
-                        colors=["#7c3aed","#06b6d4","#10b981"],
-                        autopct="%1.1f%%", startangle=140,
-                        wedgeprops=dict(edgecolor=CARD_BG, linewidth=2))
-                    for t in texts: t.set_color(TEXT)
-                    for at in autotexts: at.set_color(DARK_BG); at.set_fontsize(9)
-                    ax.set_facecolor(CARD_BG)
-                    plt.tight_layout(); st.pyplot(fig); plt.close()
-                elif col_gender:
-                    gen_cnt = df[col_gender].value_counts()
-                    fig, ax = plt.subplots(figsize=(5, 4), facecolor=CARD_BG)
-                    wedges, texts, autotexts = ax.pie(
-                        gen_cnt.values, labels=gen_cnt.index,
-                        colors=["#7c3aed","#06b6d4","#10b981"],
-                        autopct="%1.1f%%", startangle=140,
-                        wedgeprops=dict(edgecolor=CARD_BG, linewidth=2))
-                    for t in texts: t.set_color(TEXT)
-                    for at in autotexts: at.set_color(DARK_BG); at.set_fontsize(9)
-                    ax.set_facecolor(CARD_BG)
-                    plt.tight_layout(); st.pyplot(fig); plt.close()
-                else:
-                    st.info("No gender column detected.")
-                st.markdown('</div>', unsafe_allow_html=True)
+  // Cleaning notes
+  const notesDiv = document.getElementById('cleaning-notes');
+  const notesList = document.getElementById('notes-list');
+  notesList.innerHTML = '';
+  if (notes.length) {
+    notes.forEach(n => {
+      notesList.innerHTML += `<div class="note-item"><div class="note-dot ${n.type}"></div><span>${n.msg}</span></div>`;
+    });
+    notesDiv.style.display = 'block';
+  } else {
+    notesDiv.style.display = 'none';
+  }
 
-            # ── ROW 2 : Top 10 Products | Discount Analysis ───────────────────
-            r2c1, r2c2 = st.columns(2)
+  // Stats
+  const sg = document.getElementById('stats-grid');
+  sg.innerHTML = '';
+  const statsData = [
+    { label: 'Total Rows', val: data.length, color: 'var(--accent)', sub: 'after cleaning' },
+    { label: 'Columns', val: cols.length, color: 'var(--accent2)', sub: 'total features' },
+    { label: 'Numeric', val: numeric.length, color: 'var(--accent4)', sub: 'numeric cols' },
+    { label: 'Categorical', val: categorical.length, color: 'var(--accent5)', sub: 'categorical cols' },
+    { label: 'Missing', val: cols.reduce((a, c) => a + data.filter(r => r[c] === null || r[c] === '' || r[c] === undefined).length, 0), color: 'var(--warning)', sub: 'total null cells' },
+    { label: 'Cleaning Notes', val: notes.length, color: notes.length ? 'var(--warning)' : 'var(--success)', sub: 'actions taken' },
+  ];
+  statsData.forEach(s => {
+    sg.innerHTML += `<div class="stat-card" style="--stat-color:${s.color}">
+      <div class="stat-label">${s.label}</div>
+      <div class="stat-val">${s.val.toLocaleString()}</div>
+      <div class="stat-sub">${s.sub}</div>
+    </div>`;
+  });
 
-            with r2c1:
-                st.markdown('<div class="analysis-card"><h4>🏆 Top 10 Products</h4>', unsafe_allow_html=True)
-                prod_col = col_product or col_category
-                if prod_col and col_revenue:
-                    top10 = df.groupby(prod_col)[col_revenue].sum().sort_values(ascending=False).head(10)
-                    fig, ax = plt.subplots(figsize=(6, 5), facecolor=CARD_BG)
-                    colors_bar = [PALETTE[0]] + [PALETTE[1]]*(len(top10)-1)
-                    ax.barh(range(len(top10)), top10.values[::-1], color=colors_bar, edgecolor="none")
-                    ax.set_yticks(range(len(top10)))
-                    labels = [str(l)[:22]+"…" if len(str(l))>22 else str(l) for l in top10.index[::-1]]
-                    ax.set_yticklabels(labels, fontsize=8)
-                    ax.set_facecolor(DARK_BG)
-                    plt.tight_layout(); st.pyplot(fig); plt.close()
-                elif prod_col:
-                    top10 = df[prod_col].value_counts().head(10)
-                    fig, ax = plt.subplots(figsize=(6, 5), facecolor=CARD_BG)
-                    ax.barh(range(len(top10)), top10.values[::-1], color=PALETTE[0], edgecolor="none")
-                    ax.set_yticks(range(len(top10)))
-                    labels = [str(l)[:22]+"…" if len(str(l))>22 else str(l) for l in top10.index[::-1]]
-                    ax.set_yticklabels(labels, fontsize=8)
-                    ax.set_facecolor(DARK_BG)
-                    plt.tight_layout(); st.pyplot(fig); plt.close()
-                else:
-                    st.info("No product/category column detected.")
-                st.markdown('</div>', unsafe_allow_html=True)
+  // Column cards
+  const colGrid = document.getElementById('col-grid');
+  colGrid.innerHTML = '';
+  cols.forEach(c => {
+    const type = numeric.includes(c) ? 'numeric' : dateCols.includes(c) ? 'date' : 'categorical';
+    const unique = new Set(data.map(r => r[c]).filter(v => v !== null && v !== '')).size;
+    colGrid.innerHTML += `<div class="col-card">
+      <div class="col-name">${c}</div>
+      <span class="col-type ${type}">${type}</span>
+      <div style="font-size:11px;color:var(--text3);margin-top:6px;font-family:'DM Mono',monospace">${unique} unique values</div>
+    </div>`;
+  });
 
-            with r2c2:
-                st.markdown('<div class="analysis-card"><h4>🏷️ Discount Analysis</h4>', unsafe_allow_html=True)
-                if col_discount and col_revenue:
-                    fig, ax = plt.subplots(figsize=(6, 5), facecolor=CARD_BG)
-                    ax.scatter(df[col_discount], df[col_revenue],
-                               alpha=0.5, color="#7c3aed", edgecolors="none", s=20)
-                    m, b = np.polyfit(df[col_discount].dropna(), df[col_revenue].dropna(), 1)
-                    x_line = np.linspace(df[col_discount].min(), df[col_discount].max(), 100)
-                    ax.plot(x_line, m*x_line+b, color="#06b6d4", linewidth=2)
-                    ax.set_xlabel(col_discount, color=MUTED, fontsize=9)
-                    ax.set_ylabel(col_revenue, color=MUTED, fontsize=9)
-                    ax.set_facecolor(DARK_BG)
-                    plt.tight_layout(); st.pyplot(fig); plt.close()
-                elif col_discount:
-                    fig, ax = plt.subplots(figsize=(6, 5), facecolor=CARD_BG)
-                    ax.hist(df[col_discount].dropna(), bins=20, color="#f59e0b", edgecolor="none", alpha=0.85)
-                    ax.set_xlabel(col_discount, color=MUTED, fontsize=9)
-                    ax.set_facecolor(DARK_BG)
-                    plt.tight_layout(); st.pyplot(fig); plt.close()
-                elif summary['numeric_cols']:
-                    # Fallback: show numeric distributions
-                    num_col = summary['numeric_cols'][0]
-                    fig, ax = plt.subplots(figsize=(6, 5), facecolor=CARD_BG)
-                    ax.hist(df[num_col].dropna(), bins=25, color="#f59e0b", edgecolor="none", alpha=0.85)
-                    ax.set_title(f"Distribution: {num_col}", color=TEXT, fontsize=10)
-                    ax.set_facecolor(DARK_BG)
-                    plt.tight_layout(); st.pyplot(fig); plt.close()
-                else:
-                    st.info("No discount column detected.")
-                st.markdown('</div>', unsafe_allow_html=True)
+  // ── Overview charts
+  const oc = document.getElementById('overview-charts');
+  oc.innerHTML = '';
 
-            # ── ROW 3 : Stock Status | Rating Distribution ────────────────────
-            r3c1, r3c2 = st.columns(2)
+  // Bar chart: first categorical value counts
+  if (categorical.length) {
+    const c = categorical[0];
+    const vc = valueCounts(data, c).slice(0, 15);
+    const id = 'ov-bar-' + c;
+    oc.innerHTML += chartCard(id, `"${c}" Distribution`, 'Top values', 'BAR');
+    setTimeout(() => {
+      const ctx = document.getElementById(id)?.getContext('2d');
+      if (!ctx) return;
+      chartRegistry[id] = new Chart(ctx, {
+        type: 'bar',
+        data: { labels: vc.map(v => String(v[0]).slice(0, 18)), datasets: [{ label: 'Count', data: vc.map(v => v[1]), backgroundColor: PALETTE.map(p => p + 'cc'), borderRadius: 6, borderSkipped: false }] },
+        options: chartOpts('Count')
+      });
+    }, 50);
+  }
 
-            with r3c1:
-                st.markdown('<div class="analysis-card"><h4>📦 Stock Status</h4>', unsafe_allow_html=True)
-                if col_stock:
-                    if df[col_stock].dtype == object or df[col_stock].nunique() <= 6:
-                        # Categorical stock (In Stock / Out of Stock)
-                        stock_cnt = df[col_stock].value_counts()
-                        fig, ax = plt.subplots(figsize=(5, 4), facecolor=CARD_BG)
-                        colors_s = ["#10b981" if "in" in str(v).lower() or str(v)=="1"
-                                    else "#ef4444" for v in stock_cnt.index]
-                        ax.bar(stock_cnt.index.astype(str), stock_cnt.values, color=colors_s, edgecolor="none", width=0.5)
-                        ax.set_facecolor(DARK_BG)
-                        for i, v in enumerate(stock_cnt.values):
-                            ax.text(i, v + stock_cnt.max()*0.02, str(v), ha="center", color=TEXT, fontsize=9)
-                        plt.tight_layout(); st.pyplot(fig); plt.close()
-                    else:
-                        # Numeric stock — histogram
-                        fig, ax = plt.subplots(figsize=(6, 4), facecolor=CARD_BG)
-                        ax.hist(df[col_stock].dropna(), bins=25, color="#10b981", edgecolor="none", alpha=0.85)
-                        ax.axvline(df[col_stock].mean(), color="#f59e0b", linewidth=1.5, linestyle="--", label=f"Mean: {df[col_stock].mean():.0f}")
-                        ax.legend(fontsize=8, labelcolor=TEXT, facecolor=DARK_BG)
-                        ax.set_xlabel(col_stock, color=MUTED, fontsize=9)
-                        ax.set_facecolor(DARK_BG)
-                        plt.tight_layout(); st.pyplot(fig); plt.close()
-                else:
-                    # Show a summary table of any remaining numeric col
-                    if summary['numeric_cols']:
-                        nc = summary['numeric_cols'][-1]
-                        fig, ax = plt.subplots(figsize=(6, 4), facecolor=CARD_BG)
-                        ax.hist(df[nc].dropna(), bins=25, color="#10b981", edgecolor="none", alpha=0.85)
-                        ax.set_title(f"Distribution: {nc}", color=TEXT, fontsize=10)
-                        ax.set_facecolor(DARK_BG)
-                        plt.tight_layout(); st.pyplot(fig); plt.close()
-                    else:
-                        st.info("No stock column detected.")
-                st.markdown('</div>', unsafe_allow_html=True)
+  // Pie chart: second categorical
+  if (categorical.length > 1) {
+    const c = categorical[1];
+    const vc = valueCounts(data, c).slice(0, 8);
+    const id = 'ov-pie-' + c;
+    oc.innerHTML += chartCard(id, `"${c}" Composition`, 'Proportional breakdown', 'PIE');
+    setTimeout(() => {
+      const ctx = document.getElementById(id)?.getContext('2d');
+      if (!ctx) return;
+      chartRegistry[id] = new Chart(ctx, {
+        type: 'pie',
+        data: { labels: vc.map(v => String(v[0]).slice(0, 20)), datasets: [{ data: vc.map(v => v[1]), backgroundColor: PALETTE, borderWidth: 2, borderColor: 'var(--surface)' }] },
+        options: { responsive: true, plugins: { legend: { position: 'right', labels: { color: '#8892a8', font: { family: 'DM Mono', size: 11 }, padding: 12 } } } }
+      });
+    }, 50);
+  }
 
-            with r3c2:
-                st.markdown('<div class="analysis-card"><h4>⭐ Rating Distribution</h4>', unsafe_allow_html=True)
-                if col_rating:
-                    rating_counts = df[col_rating].dropna()
-                    fig, ax = plt.subplots(figsize=(6, 4), facecolor=CARD_BG)
-                    if rating_counts.nunique() <= 10:
-                        vc = rating_counts.value_counts().sort_index()
-                        bar_colors = [PALETTE[i % len(PALETTE)] for i in range(len(vc))]
-                        ax.bar(vc.index.astype(str), vc.values, color=bar_colors, edgecolor="none", width=0.6)
-                        for i, v in enumerate(vc.values):
-                            ax.text(i, v + vc.max()*0.02, str(v), ha="center", color=TEXT, fontsize=9)
-                    else:
-                        ax.hist(rating_counts, bins=20, color="#f59e0b", edgecolor="none", alpha=0.85)
-                        ax.axvline(rating_counts.mean(), color="#06b6d4", linewidth=1.5, linestyle="--",
-                                   label=f"Mean: {rating_counts.mean():.2f}")
-                        ax.legend(fontsize=8, labelcolor=TEXT, facecolor=DARK_BG)
-                    ax.set_facecolor(DARK_BG)
-                    ax.set_xlabel(col_rating, color=MUTED, fontsize=9)
-                    plt.tight_layout(); st.pyplot(fig); plt.close()
-                else:
-                    st.info("No rating column detected.")
-                st.markdown('</div>', unsafe_allow_html=True)
+  // Line chart: first numeric over rows
+  if (numeric.length) {
+    const c = numeric[0];
+    const step = Math.max(1, Math.floor(data.length / 80));
+    const pts = data.filter((_, i) => i % step === 0).map((r, i) => ({ x: i * step, y: r[c] }));
+    const id = 'ov-line-' + c;
+    oc.innerHTML += chartCard(id, `"${c}" Trend`, 'Row-by-row values', 'LINE');
+    setTimeout(() => {
+      const ctx = document.getElementById(id)?.getContext('2d');
+      if (!ctx) return;
+      chartRegistry[id] = new Chart(ctx, {
+        type: 'line',
+        data: { datasets: [{ label: c, data: pts, borderColor: PALETTE[0], backgroundColor: PALETTE[0] + '22', fill: true, tension: 0.35, pointRadius: 0, borderWidth: 2 }] },
+        options: { ...chartOpts(c), scales: { x: { type: 'linear', title: { display: true, text: 'Row', color: '#4e5a70', font: { family: 'DM Mono', size: 11 } }, grid: { color: '#1c2336' }, ticks: { color: '#4e5a70', font: { family: 'DM Mono', size: 10 } } }, y: { grid: { color: '#1c2336' }, ticks: { color: '#4e5a70', font: { family: 'DM Mono', size: 10 } } } } }
+      });
+    }, 50);
+  }
 
-        with tab3:
-            if st.session_state.analysis_done and st.session_state.ai_insights is None:
-                with st.spinner("🤖 AI is analyzing your dataset..."):
-                    ctx = build_context(df, summary)
-                    sys_p = """You are an expert data scientist providing concise, actionable insights. 
-Format your response with clear sections using emoji headers. Be specific with numbers. 
-Identify patterns, anomalies, recommendations. Keep it structured and under 600 words."""
-                    user_p = f"Analyze this dataset and provide: key findings, data quality issues, patterns/trends, and 3 actionable recommendations.\n\n{ctx}"
-                    st.session_state.ai_insights = ask_claude(sys_p, user_p)
+  // ── Distributions charts
+  const dc = document.getElementById('dist-charts');
+  dc.innerHTML = '';
 
-            if st.session_state.ai_insights:
-                st.markdown(f"""
-                <div class="ai-response">
-                    <div class="ai-badge">🤖 Claude AI Analysis</div>
-                    <div style="white-space:pre-wrap">{st.session_state.ai_insights}</div>
-                </div>
-                """, unsafe_allow_html=True)
-            elif not st.session_state.analysis_done:
-                st.markdown("""
-                <div class="insight-box">
-                    💡 Click <strong>"Run Full Analysis"</strong> above to get AI-powered insights about your dataset.
-                </div>
-                """, unsafe_allow_html=True)
+  // Histogram for each numeric col
+  numeric.forEach((c, i) => {
+    const vals = data.map(r => r[c]).filter(v => typeof v === 'number' && !isNaN(v));
+    const s = numStats(data, c);
+    const bins = 20;
+    const step = (s.max - s.min) / bins;
+    if (step === 0) return;
+    const buckets = Array(bins).fill(0);
+    const labels = [];
+    for (let b = 0; b < bins; b++) labels.push((s.min + b * step).toFixed(1));
+    vals.forEach(v => {
+      const idx = Math.min(bins - 1, Math.floor((v - s.min) / step));
+      buckets[idx]++;
+    });
+    const id = 'dist-hist-' + i;
+    dc.innerHTML += chartCard(id, `"${c}" Histogram`, `mean: ${s.mean} | std: ${s.std}`, 'HISTOGRAM');
+    setTimeout(() => {
+      const ctx = document.getElementById(id)?.getContext('2d');
+      if (!ctx) return;
+      chartRegistry[id] = new Chart(ctx, {
+        type: 'bar',
+        data: { labels, datasets: [{ label: c, data: buckets, backgroundColor: PALETTE[i % PALETTE.length] + 'bb', borderColor: PALETTE[i % PALETTE.length], borderWidth: 1, borderRadius: 4, barPercentage: 1, categoryPercentage: 1 }] },
+        options: chartOpts('Frequency')
+      });
+    }, 50);
+  });
 
-        with tab4:
-            st.markdown('<div class="analysis-card"><h4>💬 Ask Anything About Your Data</h4>', unsafe_allow_html=True)
-            question = st.text_area(
-                "Your question",
-                placeholder="e.g. What are the main outliers? Which columns are most correlated? What's causing the missing values?",
-                height=100,
-                label_visibility="collapsed"
-            )
-            if st.button("🔍 Ask AI", use_container_width=False):
-                if question.strip():
-                    with st.spinner("Thinking..."):
-                        ctx = build_context(df, summary)
-                        sys_p = "You are a data analyst expert. Answer questions about the dataset concisely and accurately. Use specific numbers from the data."
-                        user_p = f"Dataset context:\n{ctx}\n\nQuestion: {question}"
-                        answer = ask_claude(sys_p, user_p)
-                        st.session_state.ai_answer = (question, answer)
-                else:
-                    st.warning("Please enter a question first.")
-            st.markdown('</div>', unsafe_allow_html=True)
+  // Bar/pie for each categorical
+  categorical.forEach((c, i) => {
+    const vc = valueCounts(data, c).slice(0, 12);
+    if (vc.length <= 6) {
+      // Pie
+      const id = 'dist-pie-' + i;
+      dc.innerHTML += chartCard(id, `"${c}" Breakdown`, `${vc.length} categories`, 'PIE');
+      setTimeout(() => {
+        const ctx = document.getElementById(id)?.getContext('2d');
+        if (!ctx) return;
+        chartRegistry[id] = new Chart(ctx, {
+          type: 'pie',
+          data: { labels: vc.map(v => String(v[0]).slice(0, 20)), datasets: [{ data: vc.map(v => v[1]), backgroundColor: PALETTE, borderWidth: 2, borderColor: 'var(--surface)' }] },
+          options: { responsive: true, plugins: { legend: { position: 'right', labels: { color: '#8892a8', font: { family: 'DM Mono', size: 11 }, padding: 12 } } } }
+        });
+      }, 50);
+    } else {
+      // Bar
+      const id = 'dist-bar-' + i;
+      dc.innerHTML += chartCard(id, `"${c}" Top Values`, `showing top 12`, 'BAR');
+      setTimeout(() => {
+        const ctx = document.getElementById(id)?.getContext('2d');
+        if (!ctx) return;
+        chartRegistry[id] = new Chart(ctx, {
+          type: 'bar',
+          data: { labels: vc.map(v => String(v[0]).slice(0, 16)), datasets: [{ label: 'Count', data: vc.map(v => v[1]), backgroundColor: PALETTE[(i + 2) % PALETTE.length] + 'cc', borderRadius: 6, borderSkipped: false }] },
+          options: chartOpts('Count')
+        });
+      }, 50);
+    }
+  });
 
-            if st.session_state.ai_answer:
-                q, a = st.session_state.ai_answer
-                st.markdown(f"""
-                <div style="margin-top:1rem">
-                    <div class="insight-box" style="font-size:0.9rem; color:#64748b">❓ {q}</div>
-                    <div class="ai-response">
-                        <div class="ai-badge">🤖 Claude AI Answer</div>
-                        <div style="white-space:pre-wrap">{a}</div>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
+  // ── Relationships
+  const rc = document.getElementById('rel-charts');
+  rc.innerHTML = '';
+
+  // Scatter plots for numeric pairs
+  if (numeric.length >= 2) {
+    for (let a = 0; a < Math.min(numeric.length - 1, 3); a++) {
+      for (let b = a + 1; b < Math.min(numeric.length, 4); b++) {
+        const cx = numeric[a], cy = numeric[b];
+        const pts = data
+          .filter(r => typeof r[cx] === 'number' && typeof r[cy] === 'number' && !isNaN(r[cx]) && !isNaN(r[cy]))
+          .slice(0, 500)
+          .map(r => ({ x: r[cx], y: r[cy] }));
+        const id = `scatter-${a}-${b}`;
+        rc.innerHTML += chartCard(id, `"${cx}" vs "${cy}"`, 'Scatter plot', 'SCATTER');
+        setTimeout(() => {
+          const ctx = document.getElementById(id)?.getContext('2d');
+          if (!ctx) return;
+          chartRegistry[id] = new Chart(ctx, {
+            type: 'scatter',
+            data: { datasets: [{ label: `${cx} vs ${cy}`, data: pts, backgroundColor: PALETTE[(a + b) % PALETTE.length] + '99', pointRadius: 4 }] },
+            options: { responsive: true, plugins: { legend: { display: false } }, scales: {
+              x: { title: { display: true, text: cx, color: '#4e5a70', font: { family: 'DM Mono', size: 11 } }, grid: { color: '#1c2336' }, ticks: { color: '#4e5a70', font: { family: 'DM Mono', size: 10 } } },
+              y: { title: { display: true, text: cy, color: '#4e5a70', font: { family: 'DM Mono', size: 11 } }, grid: { color: '#1c2336' }, ticks: { color: '#4e5a70', font: { family: 'DM Mono', size: 10 } } }
+            }}
+          });
+        }, 50);
+      }
+    }
+  }
+
+  // Heatmap
+  const numForHeat = numeric.slice(0, 8);
+  if (numForHeat.length >= 2) {
+    const matrix = correlationMatrix(data, numForHeat);
+    document.getElementById('heatmap-card').style.display = '';
+    const hc = document.getElementById('heatmap-container');
+    let html = '<table class="heatmap-table"><thead><tr><th></th>' + numForHeat.map(c => `<th title="${c}">${c.slice(0, 10)}</th>`).join('') + '</tr></thead><tbody>';
+    numForHeat.forEach(r => {
+      html += `<tr><th style="text-align:right;padding-right:10px;color:var(--text2);font-size:10px">${r.slice(0, 12)}</th>`;
+      numForHeat.forEach(c => {
+        const val = matrix[r][c];
+        const abs = Math.abs(val);
+        const color = val > 0
+          ? `rgba(79,142,247,${abs * 0.9})`
+          : `rgba(247,90,142,${abs * 0.9})`;
+        const textColor = abs > 0.4 ? '#fff' : '#8892a8';
+        html += `<td style="background:${color};color:${textColor}" title="${r} × ${c}: ${val}">${val}</td>`;
+      });
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+    hc.innerHTML = html;
+  } else {
+    document.getElementById('heatmap-card').style.display = 'none';
+  }
+
+  // ── Pivot Tables
+  const pt = document.getElementById('pivot-tables');
+  pt.innerHTML = '';
+
+  // For each categorical col crossed with numeric cols
+  const pivotCats = categorical.slice(0, 3);
+  const pivotNums = numeric.slice(0, 4);
+
+  if (pivotCats.length && pivotNums.length) {
+    pivotCats.forEach((cat, ci) => {
+      const groups = {};
+      data.forEach(r => {
+        const key = r[cat] !== null && r[cat] !== '' && r[cat] !== undefined ? String(r[cat]) : '(empty)';
+        if (!groups[key]) groups[key] = {};
+        pivotNums.forEach(n => {
+          if (!groups[key][n]) groups[key][n] = [];
+          if (typeof r[n] === 'number' && !isNaN(r[n])) groups[key][n].push(r[n]);
+        });
+      });
+
+      const keys = Object.keys(groups).slice(0, 20);
+      let html = `<div class="section-title" style="margin-top:${ci ? '24px' : '0'}">"${cat}" × Numeric Summary</div>
+        <div class="pivot-wrap"><table class="pivot-table"><thead><tr>
+        <th>${cat}</th><th>Count</th>`;
+      pivotNums.forEach(n => html += `<th>${n} (avg)</th><th>${n} (sum)</th>`);
+      html += '</tr></thead><tbody>';
+
+      keys.forEach(k => {
+        const g = groups[k];
+        const cnt = g[pivotNums[0]] ? g[pivotNums[0]].length : 0;
+        html += `<tr><td class="label">${String(k).slice(0, 30)}</td><td class="num">${cnt}</td>`;
+        pivotNums.forEach(n => {
+          const vals = g[n] || [];
+          const avg = vals.length ? (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2) : '-';
+          const sum = vals.length ? vals.reduce((a, b) => a + b, 0).toFixed(2) : '-';
+          html += `<td class="num">${avg}</td><td class="num">${sum}</td>`;
+        });
+        html += '</tr>';
+      });
+      html += '</tbody></table></div>';
+      pt.innerHTML += html;
+    });
+  } else {
+    pt.innerHTML = '<div class="empty-state">No categorical columns available for pivot tables.</div>';
+  }
+
+  // ── Numeric stats pivot
+  if (numeric.length) {
+    let html = '<div class="section-title" style="margin-top:24px">Numeric Statistics Summary</div><div class="pivot-wrap"><table class="pivot-table"><thead><tr><th>Column</th><th>Count</th><th>Min</th><th>Max</th><th>Mean</th><th>Median</th><th>Std Dev</th><th>Sum</th></tr></thead><tbody>';
+    numeric.forEach(c => {
+      const s = numStats(data, c);
+      html += `<tr><td class="label">${c}</td><td class="num">${s.count}</td><td class="num">${s.min}</td><td class="num">${s.max}</td><td class="num">${s.mean}</td><td class="num">${s.median}</td><td class="num">${s.std}</td><td class="num">${s.sum}</td></tr>`;
+    });
+    html += '</tbody></table></div>';
+    pt.innerHTML += html;
+  }
+
+  // ── Data Preview Table
+  const dtw = document.getElementById('data-table-wrap');
+  const previewData = data.slice(0, 200);
+  let tableHtml = '<table class="data-table"><thead><tr>' + cols.map(c => `<th>${c}</th>`).join('') + '</tr></thead><tbody>';
+  previewData.forEach(r => {
+    tableHtml += '<tr>' + cols.map(c => {
+      const v = r[c];
+      const display = v === null || v === undefined ? '<span style="color:var(--danger)">null</span>' : String(v).slice(0, 40);
+      return `<td>${display}</td>`;
+    }).join('') + '</tr>';
+  });
+  tableHtml += '</tbody></table>';
+  dtw.innerHTML = tableHtml;
+
+  // Show dashboard
+  document.getElementById('upload-zone').style.display = 'none';
+  document.getElementById('dashboard').style.display = 'block';
+  switchTab('overview', document.querySelector('.tab-btn'));
+}
+
+// ──────────────────────────────────────────────
+//  HELPERS
+// ──────────────────────────────────────────────
+function chartCard(id, title, subtitle, type) {
+  return `<div class="chart-card">
+    <div class="chart-header">
+      <div>
+        <div class="chart-title">${title}</div>
+        <div class="chart-subtitle">${subtitle}</div>
+      </div>
+      <span class="chart-type-badge">${type}</span>
+    </div>
+    <div class="chart-wrap"><canvas id="${id}" height="240"></canvas></div>
+  </div>`;
+}
+
+function chartOpts(yLabel) {
+  return {
+    responsive: true,
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { grid: { color: '#1c2336' }, ticks: { color: '#4e5a70', font: { family: 'DM Mono', size: 10 }, maxRotation: 40 } },
+      y: { grid: { color: '#1c2336' }, ticks: { color: '#4e5a70', font: { family: 'DM Mono', size: 10 } }, title: { display: !!yLabel, text: yLabel, color: '#4e5a70', font: { family: 'DM Mono', size: 11 } } }
+    }
+  };
+}
+
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  if (btn) btn.classList.add('active');
+}
+
+function resetDashboard() {
+  Object.values(chartRegistry).forEach(c => c.destroy());
+  Object.keys(chartRegistry).forEach(k => delete chartRegistry[k]);
+  document.getElementById('upload-zone').style.display = 'flex';
+  document.getElementById('dashboard').style.display = 'none';
+  document.getElementById('file-input').value = '';
+  gData = []; gColumns = []; gFileName = '';
+}
+
+function showLoading() { document.getElementById('loading-overlay').classList.add('show'); }
+function hideLoading() { document.getElementById('loading-overlay').classList.remove('show'); }
+</script>
+</body>
+</html>
