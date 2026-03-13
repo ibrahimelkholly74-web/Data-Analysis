@@ -307,15 +307,40 @@ def ask_claude(system_prompt, user_prompt):
 # ─── Data Helpers ────────────────────────────────────────────────────────────
 def load_data(file):
     name = file.name.lower()
-    if name.endswith(".csv"):
-        return pd.read_csv(file)
-    elif name.endswith((".xls", ".xlsx")):
-        return pd.read_excel(file)
-    elif name.endswith(".json"):
-        return pd.read_json(file)
-    elif name.endswith(".tsv"):
-        return pd.read_csv(file, sep="\t")
-    return None
+    try:
+        if name.endswith(".csv"):
+            df = pd.read_csv(file, encoding="utf-8")
+        elif name.endswith((".xls", ".xlsx")):
+            df = pd.read_excel(file)
+        elif name.endswith(".json"):
+            df = pd.read_json(file)
+        elif name.endswith(".tsv"):
+            df = pd.read_csv(file, sep="\t", encoding="utf-8")
+        else:
+            return None
+    except UnicodeDecodeError:
+        # Retry with latin-1 for CSV/TSV if UTF-8 fails
+        file.seek(0)
+        if name.endswith(".csv"):
+            df = pd.read_csv(file, encoding="latin-1")
+        elif name.endswith(".tsv"):
+            df = pd.read_csv(file, sep="\t", encoding="latin-1")
+        else:
+            return None
+
+    # Auto-convert columns that look numeric but were read as strings
+    for col in df.columns:
+        if df[col].dtype == object:
+            # Strip whitespace
+            df[col] = df[col].astype(str).str.strip()
+            # Try converting to numeric (handles commas like "1,234")
+            converted = df[col].str.replace(",", "", regex=False)
+            converted = pd.to_numeric(converted, errors="coerce")
+            # Only replace if most values converted successfully (>50%)
+            if converted.notna().sum() / max(len(df), 1) > 0.5:
+                df[col] = converted
+
+    return df
 
 def df_summary(df):
     numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
